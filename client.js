@@ -155,6 +155,8 @@ window.__ModuleLoader__.load({
 			".dshm-reopen{position:fixed;right:16px;bottom:16px;width:40px;height:40px;border-radius:50%;background:linear-gradient(155deg,rgba(255,255,255,0.18),rgba(49,194,124,0.12)),rgba(10,16,14,0.65);backdrop-filter:blur(24px) saturate(180%);-webkit-backdrop-filter:blur(24px) saturate(180%);border:1px solid rgba(255,255,255,0.25);box-shadow:0 8px 24px rgba(0,0,0,0.45),0 0 0 4px rgba(49,194,124,0.16),inset 0 1px 0 rgba(255,255,255,0.2);display:flex;align-items:center;justify-content:center;color:#5ce6a8;cursor:pointer;transition:transform .15s ease,box-shadow .15s ease;animation:dshm-mini-pop .32s cubic-bezier(.22,1,.36,1)}",
 			".dshm-reopen:hover{transform:scale(1.08);box-shadow:0 8px 24px rgba(0,0,0,0.45),0 0 0 6px rgba(49,194,124,0.3),inset 0 1px 0 rgba(255,255,255,0.2)}",
 			".dshm-reopen-pulse{position:absolute;inset:0;border-radius:50%;border:2px solid rgba(49,194,124,0.55);animation:dshm-mini-pulse 2.2s ease-out infinite;pointer-events:none}",
+			".dshm-reopen-disc{width:30px;height:30px;border-radius:50%;overflow:hidden;border:2px solid rgba(255,255,255,0.3);box-shadow:0 2px 8px rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center}",
+			".dshm-reopen-disc img{width:100%;height:100%;object-fit:cover;display:block}",
 			".dshm-card{animation:dshm-mini-in .28s cubic-bezier(.22,1,.36,1)}",
 			"@keyframes dshm-mini-in{from{transform:scale(.7);opacity:0}to{transform:scale(1);opacity:1}}"
 		].join("");
@@ -1033,6 +1035,16 @@ window.__ModuleLoader__.load({
 				snapMiniPosition();
 				setMini(true);
 			};
+			// Let the settings card (or anything else) show/hide the player.
+			react.useEffect(function () {
+				var onSetHidden = function (event) {
+					var next = Boolean(event.detail);
+					try { localStorage.setItem(STORE_HIDDEN, next ? "1" : "0"); } catch { /* ignore */ }
+					setHidden(next);
+				};
+				window.addEventListener("dsh-music:set-hidden", onSetHidden);
+				return function () { window.removeEventListener("dsh-music:set-hidden", onSetHidden); };
+			}, []);
 			var onCardEnter = function () {
 				if (miniLeaveTimerRef.current) {
 					clearTimeout(miniLeaveTimerRef.current);
@@ -1099,24 +1111,32 @@ window.__ModuleLoader__.load({
 			else if (loginStateKind === "failed" || loginStateKind === "expired") statusDotClass += " dshm-status-dot-err";
 			else if (loginStateKind === "done") statusDotClass += " dshm-status-dot-ok";
 
-			// Hidden (closed) state: a small reopen button in the corner.
-			// Music keeps playing; the button pulses while playing.
+			// Hidden (closed) state: a small cover button in the corner.
+			// Music keeps playing; click it to reopen and resume playback.
 			if (hidden) {
 				return h("div", {
 					className: "dshm-reopen",
-					onClick: handleClick(reopenPlayer),
-					title: playing ? "打开音乐播放器（正在播放）" : "打开音乐播放器"
+					onClick: handleClick(function () {
+						reopenPlayer();
+						if (!playing) run({ action: "play" });
+					}),
+					title: playing ? "打开播放器（正在播放）" : "点击继续播放"
 				}, [
 					playing ? h("span", { className: "dshm-reopen-pulse" }) : null,
-					h("svg", {
-						width: 17, height: 17, viewBox: "0 0 24 24",
-						fill: "none", stroke: "currentColor", strokeWidth: 2,
-						strokeLinecap: "round", strokeLinejoin: "round"
-					}, [
-						h("path", { d: "M9 18V5l12-2v13" }),
-						h("circle", { cx: 6, cy: 18, r: 3 }),
-						h("circle", { cx: 18, cy: 16, r: 3 })
-					])
+					track && track.cover
+						? h("div", {
+							className: "dshm-reopen-disc" + (playing ? " dshm-cover-spinning" : ""),
+							style: { animationPlayState: playing ? "running" : "paused" }
+						}, h("img", { src: track.cover, alt: "", draggable: false }))
+						: h("svg", {
+							width: 17, height: 17, viewBox: "0 0 24 24",
+							fill: "none", stroke: "currentColor", strokeWidth: 2,
+							strokeLinecap: "round", strokeLinejoin: "round"
+						}, [
+							h("path", { d: "M9 18V5l12-2v13" }),
+							h("circle", { cx: 6, cy: 18, r: 3 }),
+							h("circle", { cx: 18, cy: 16, r: 3 })
+						])
 				]);
 			}
 
@@ -1536,7 +1556,60 @@ window.__ModuleLoader__.load({
 		}
 
 		/**
-		 * Client plugin entry: mount the floating player and its stylesheet.
+		 * Settings card shown under 设置 → 插件 → 插件配置: plugin identity,
+		 * live playback/login status, and show/hide controls. Communicates with
+		 * the floating player through the "dsh-music:set-hidden" window event.
+		 */
+		function MusicSettingsCard() {
+			var [now, setNow] = react.useState(null);
+			var [login, setLogin] = react.useState(null);
+			react.useEffect(function () {
+				var alive = true;
+				var refresh = function () {
+					Promise.all([
+						fetch("/dsh-music/state", { cache: "no-store" }).then(function (r) { return r.json(); }).catch(function () { return null; }),
+						fetch("/dsh-music/qq/login/status", { cache: "no-store" }).then(function (r) { return r.json(); }).catch(function () { return null; })
+					]).then(function (values) {
+						if (!alive) return;
+						setNow(values[0]);
+						setLogin(values[1]);
+					});
+				};
+				refresh();
+				var timer = setInterval(refresh, 4000);
+				return function () { alive = false; clearInterval(timer); };
+			}, []);
+			var track = now && now.queue && now.queue[now.index] ? now.queue[now.index] : null;
+			var playing = Boolean(now && now.playing);
+			var setHidden = function (hidden) {
+				try {
+					window.dispatchEvent(new CustomEvent("dsh-music:set-hidden", { detail: hidden }));
+				} catch { /* ignore */ }
+			};
+			var label = { color: "var(--dsw-alias-label-primary)", fontSize: 13, lineHeight: "20px" };
+			var muted = { color: "var(--dsw-alias-label-tertiary)", fontSize: 13, lineHeight: "20px" };
+			var badge = { color: "var(--dsw-alias-label-secondary)", fontSize: 11, border: "1px solid var(--dsw-alias-border-l2)", borderRadius: 999, padding: "1px 8px", whiteSpace: "nowrap" };
+			var btn = { border: "1px solid var(--dsw-alias-border-l2)", background: "var(--dsw-alias-bg-layer-1)", color: "var(--dsw-alias-label-primary)", borderRadius: 8, padding: "5px 14px", fontSize: 13, cursor: "pointer" };
+			return h("div", { style: { display: "flex", flexDirection: "column", gap: 6, padding: "12px 16px 14px" } }, [
+				h("div", { style: { display: "flex", alignItems: "center", gap: 8 } }, [
+					h("span", { style: { fontSize: 14, fontWeight: 600, color: "var(--dsw-alias-label-primary)" } }, "🎵 音乐播放器（QQ 音乐）"),
+					h("span", { style: badge }, "v0.6.1"),
+					h("span", { style: Object.assign({}, badge, { color: playing ? "var(--dsw-alias-state-success-primary)" : "var(--dsw-alias-label-tertiary)" }) }, playing ? "播放中" : "已暂停")
+				]),
+				h("div", { style: track ? label : muted }, track ? "正在播放：" + track.title + " — " + track.artist : "当前没有播放歌曲"),
+				h("div", { style: muted }, login && login.loggedIn
+					? "QQ 音乐账号：已登录" + (login.nickname ? "（" + login.nickname + "）" : "")
+					: "QQ 音乐账号：未登录（VIP 歌曲不可播）"),
+				h("div", { style: { display: "flex", gap: 8, marginTop: 2 } }, [
+					h("button", { type: "button", style: btn, onClick: function () { setHidden(false); } }, "显示播放器"),
+					h("button", { type: "button", style: btn, onClick: function () { setHidden(true); } }, "隐藏播放器")
+				])
+			]);
+		}
+
+		/**
+		 * Client plugin entry: mount the floating player and its stylesheet,
+		 * and register the settings card under 设置 → 插件.
 		 * @param ctx - client root context.
 		 */
 		function apply(ctx) {
@@ -1551,6 +1624,21 @@ window.__ModuleLoader__.load({
 					if (root.parentNode) root.parentNode.removeChild(root);
 				};
 			});
+			// Show the plugin in the settings plugins page (plugin configuration tab).
+			var slots = ctx.get && ctx.get("slots");
+			if (slots) {
+				ctx.effect(function () {
+					return slots.inject("settings.plugin.item", function* () {
+						yield slots.register({
+							name: "settings.plugin.item",
+							id: "dsh-music",
+							order: 30,
+							label: function () { return "音乐播放器"; },
+							inject: function () { return {}; }
+						}, MusicSettingsCard);
+					});
+				});
+			}
 		}
 
 		var inject = [];
