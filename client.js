@@ -20,6 +20,8 @@ window.__ModuleLoader__.load({
 		var STORE_X = "dsh-music:x";
 		var STORE_Y = "dsh-music:y";
 		var STORE_QUALITY = "dsh-music:quality";
+		var STORE_HIDDEN = "dsh-music:hidden";
+		var STORE_ONBOARDED = "dsh-music:onboarded";
 		var PROGRESS_KEY = "dsh-music:progress";
 
 		/**
@@ -148,6 +150,11 @@ window.__ModuleLoader__.load({
 			"@keyframes dshm-mini-pulse{0%{transform:scale(1);opacity:.75}100%{transform:scale(1.5);opacity:0}}",
 			".dshm-mini-hover{box-shadow:0 8px 24px rgba(0,0,0,0.45),0 0 0 6px rgba(49,194,124,0.3),inset 0 1px 0 rgba(255,255,255,0.22)}",
 			".dshm-mini-expand{position:absolute;top:-4px;right:-4px;width:20px;height:20px;border-radius:50%;border:2px solid rgba(255,255,255,0.3);background:linear-gradient(135deg,#3ddc84,#00a854);color:#fff;font-size:13px;font-weight:700;line-height:1;display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 2px 10px rgba(0,190,96,0.55);animation:dshm-mini-pop .18s ease-out;padding:0}",
+			".dshm-mini-close{position:absolute;bottom:-4px;left:-4px;width:20px;height:20px;border-radius:50%;border:2px solid rgba(255,255,255,0.3);background:linear-gradient(135deg,#ff6b6b,#e03333);color:#fff;font-size:12px;font-weight:700;line-height:1;display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 2px 10px rgba(255,80,80,0.5);animation:dshm-mini-pop .18s ease-out;padding:0}",
+			// ── reopen button (player hidden) ─────────────────────────────────
+			".dshm-reopen{position:fixed;right:16px;bottom:16px;width:40px;height:40px;border-radius:50%;background:linear-gradient(155deg,rgba(255,255,255,0.18),rgba(49,194,124,0.12)),rgba(10,16,14,0.65);backdrop-filter:blur(24px) saturate(180%);-webkit-backdrop-filter:blur(24px) saturate(180%);border:1px solid rgba(255,255,255,0.25);box-shadow:0 8px 24px rgba(0,0,0,0.45),0 0 0 4px rgba(49,194,124,0.16),inset 0 1px 0 rgba(255,255,255,0.2);display:flex;align-items:center;justify-content:center;color:#5ce6a8;cursor:pointer;transition:transform .15s ease,box-shadow .15s ease;animation:dshm-mini-pop .32s cubic-bezier(.22,1,.36,1)}",
+			".dshm-reopen:hover{transform:scale(1.08);box-shadow:0 8px 24px rgba(0,0,0,0.45),0 0 0 6px rgba(49,194,124,0.3),inset 0 1px 0 rgba(255,255,255,0.2)}",
+			".dshm-reopen-pulse{position:absolute;inset:0;border-radius:50%;border:2px solid rgba(49,194,124,0.55);animation:dshm-mini-pulse 2.2s ease-out infinite;pointer-events:none}",
 			".dshm-card{animation:dshm-mini-in .28s cubic-bezier(.22,1,.36,1)}",
 			"@keyframes dshm-mini-in{from{transform:scale(.7);opacity:0}to{transform:scale(1);opacity:1}}"
 		].join("");
@@ -387,6 +394,11 @@ window.__ModuleLoader__.load({
 			// Mini-disc auto-collapse while playing.
 			var [mini, setMini] = react.useState(false);
 			var [miniHover, setMiniHover] = react.useState(false);
+			// Player hidden (closed) state — music keeps playing; a small
+			// reopen button stays in the corner.
+			var [hidden, setHidden] = react.useState(function () {
+				try { return localStorage.getItem(STORE_HIDDEN) === "1"; } catch { return false; }
+			});
 			var miniLeaveTimerRef = react.useRef(null);
 			var miniClicksRef = react.useRef(0);
 			var miniClickTimerRef = react.useRef(null);
@@ -418,6 +430,20 @@ window.__ModuleLoader__.load({
 				setPos(null);
 			};
 			react.useEffect(restorePos, []);
+
+			// First run shows the full card as onboarding; afterwards the
+			// player starts (and reopens) as a snapped mini disc.
+			react.useEffect(function () {
+				try {
+					if (localStorage.getItem(STORE_ONBOARDED) === "1") {
+						snapMiniPosition();
+						setMini(true);
+					} else {
+						localStorage.setItem(STORE_ONBOARDED, "1");
+					}
+				} catch { /* ignore */ }
+				// eslint-disable-next-line react-hooks/exhaustive-deps
+			}, []);
 
 			// Keep the card inside the viewport (height changes when collapsing).
 			react.useEffect(function () {
@@ -971,7 +997,7 @@ window.__ModuleLoader__.load({
 				: { position: "fixed", right: 18, bottom: 18 };
 			var expanded = !collapsed;
 
-			// ── mini disc: auto-collapse while playing & idle ────────────────
+			// ── mini disc: auto-collapse while idle (playing or not) ──────────
 			// Snap the disc to the nearer screen edge (floating-ball behavior).
 			var snapMiniPosition = function () {
 				var p = posRef.current;
@@ -982,16 +1008,30 @@ window.__ModuleLoader__.load({
 				posRef.current = { x: snappedX, y: y, snap: true };
 				setPos({ x: snappedX, y: y, snap: true });
 			};
+			// Collapse to the mini disc after the mouse leaves for 5 seconds —
+			// regardless of playback state, so an idle player never lingers as
+			// a large bar.
 			var onCardLeave = function () {
-				if (!playingRef.current) return;
 				if (miniLeaveTimerRef.current) clearTimeout(miniLeaveTimerRef.current);
 				miniLeaveTimerRef.current = setTimeout(function () {
 					miniLeaveTimerRef.current = null;
-					if (playingRef.current) {
-						snapMiniPosition();
-						setMini(true);
-					}
-				}, 3000);
+					snapMiniPosition();
+					setMini(true);
+				}, 5000);
+			};
+			// Close (hide) the player; music keeps playing. A small reopen
+			// button appears in the corner.
+			var closePlayer = function (event) {
+				if (event && event.stopPropagation) event.stopPropagation();
+				try { localStorage.setItem(STORE_HIDDEN, "1"); } catch { /* ignore */ }
+				setHidden(true);
+			};
+			var reopenPlayer = function () {
+				try { localStorage.setItem(STORE_HIDDEN, "0"); } catch { /* ignore */ }
+				setHidden(false);
+				// Reopen as a snapped mini disc by default; hover + to expand.
+				snapMiniPosition();
+				setMini(true);
 			};
 			var onCardEnter = function () {
 				if (miniLeaveTimerRef.current) {
@@ -1059,6 +1099,27 @@ window.__ModuleLoader__.load({
 			else if (loginStateKind === "failed" || loginStateKind === "expired") statusDotClass += " dshm-status-dot-err";
 			else if (loginStateKind === "done") statusDotClass += " dshm-status-dot-ok";
 
+			// Hidden (closed) state: a small reopen button in the corner.
+			// Music keeps playing; the button pulses while playing.
+			if (hidden) {
+				return h("div", {
+					className: "dshm-reopen",
+					onClick: handleClick(reopenPlayer),
+					title: playing ? "打开音乐播放器（正在播放）" : "打开音乐播放器"
+				}, [
+					playing ? h("span", { className: "dshm-reopen-pulse" }) : null,
+					h("svg", {
+						width: 17, height: 17, viewBox: "0 0 24 24",
+						fill: "none", stroke: "currentColor", strokeWidth: 2,
+						strokeLinecap: "round", strokeLinejoin: "round"
+					}, [
+						h("path", { d: "M9 18V5l12-2v13" }),
+						h("circle", { cx: 6, cy: 18, r: 3 }),
+						h("circle", { cx: 18, cy: 16, r: 3 })
+					])
+				]);
+			}
+
 			// Mini disc view: spinning album art while playing. Draggable; it
 			// snaps to screen edges on drop. Hovering shows an expand button —
 			// it never auto-expands, so the disc can be grabbed reliably.
@@ -1102,6 +1163,17 @@ window.__ModuleLoader__.load({
 								expandFromMini();
 							}
 						}, "+")
+						: null,
+					miniHover
+						? h("button", {
+							className: "dshm-mini-close",
+							title: "关闭播放器（音乐继续播放）",
+							onMouseDown: function (event) { event.stopPropagation(); },
+							onClick: function (event) {
+								event.stopPropagation();
+								closePlayer();
+							}
+						}, "×")
 						: null
 				]);
 			}
@@ -1177,7 +1249,15 @@ window.__ModuleLoader__.load({
 									event.stopPropagation();
 									toggleCollapsed();
 								})
-							}, h(Icon, { name: "chevronUp", size: 14 }))
+							}, h(Icon, { name: "chevronUp", size: 14 })),
+							h("button", {
+								className: "dshm-btn dshm-btn-icon dshm-vt-fade",
+								title: "关闭播放器（音乐继续播放）",
+								onClick: handleClick(function (event) {
+									event.stopPropagation();
+									closePlayer();
+								})
+							}, h(Icon, { name: "close", size: 13 }))
 						])
 					])
 				]),

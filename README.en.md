@@ -7,7 +7,8 @@
 ## Features
 
 - **Floating player**: QQ-green × yellow dark frosted-glass card (`backdrop-filter` blur + inner glow), **draggable with position memory**, expand/collapse with spring-physics animation; the cover **spins like a vinyl record** while playing; play/pause, prev/next, click-to-seek progress bar (green→yellow gradient with a glowing knob), volume, list-loop/single-loop/shuffle, playlist view
-- **Auto-collapsing mini disc**: while playing, moving the mouse away for 3 seconds collapses the player into a **spinning mini disc** (album art); **hover shows a "+" expand button** (click to restore — hovering never auto-expands); **drag it anywhere**, it **snaps to the screen edge** on release (floating-ball style); **double-click = next track, triple-click = previous track**
+- **Auto-collapsing mini disc**: whether playing or not, moving the mouse away for 5 seconds collapses the player into a **spinning mini disc** (album art); **hover shows a "+" expand button** (click to restore — hovering never auto-expands); **drag it anywhere**, it **snaps to the screen edge** on release (floating-ball style); **double-click = next track, triple-click = previous track**
+- **One-tap close/reopen**: hit the **×** on the player to hide it (music keeps playing) — a small note button stays in the corner; click it to reopen — **it defaults to the snapped mini disc** (only the very first run shows the full card)
 - **Resume playback**: per-track progress is remembered — switching back to the same track or restarting the app continues from where you left off
 - **Quality switch**: one-tap **128k standard / 320k high quality** (320k requires a logged-in VIP account; auto-degrades)
 - **Keyboard shortcuts**: `Space` play/pause, `←` previous, `→` next (ignored while typing in inputs)
