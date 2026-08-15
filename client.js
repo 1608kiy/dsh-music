@@ -1033,12 +1033,13 @@ window.__ModuleLoader__.load({
 					setMini(true);
 				}, 5000);
 			};
-			// Close (hide) the player; music keeps playing. A small reopen
-			// button appears in the corner.
-			var closePlayer = function (event) {
+			// Minimize: collapse the player into the corner mini disc (like
+			// "收起/最小化"). Fully disabling the plugin is done from the
+			// settings plugins page, not from the player itself.
+			var minimizePlayer = function (event) {
 				if (event && event.stopPropagation) event.stopPropagation();
-				try { localStorage.setItem(STORE_HIDDEN, "1"); } catch { /* ignore */ }
-				setHidden(true);
+				snapMiniPosition();
+				setMini(true);
 			};
 			var reopenPlayer = function () {
 				try { localStorage.setItem(STORE_HIDDEN, "0"); } catch { /* ignore */ }
@@ -1177,17 +1178,6 @@ window.__ModuleLoader__.load({
 								expandFromMini();
 							}
 						}, "+")
-						: null,
-					miniHover
-						? h("button", {
-							className: "dshm-mini-close",
-							title: "关闭播放器（音乐继续播放）",
-							onMouseDown: function (event) { event.stopPropagation(); },
-							onClick: function (event) {
-								event.stopPropagation();
-								closePlayer();
-							}
-						}, "×")
 						: null
 				]);
 			}
@@ -1266,12 +1256,12 @@ window.__ModuleLoader__.load({
 							}, h(Icon, { name: "chevronUp", size: 14 })),
 							h("button", {
 								className: "dshm-btn dshm-btn-icon dshm-vt-fade",
-								title: "关闭播放器（音乐继续播放）",
+								title: "最小化播放器（收起到角落小圈）",
 								onClick: handleClick(function (event) {
 									event.stopPropagation();
-									closePlayer();
+									minimizePlayer();
 								})
-							}, h(Icon, { name: "close", size: 13 }))
+							}, h(Icon, { name: "chevronDown", size: 13 }))
 						])
 					])
 				]),
@@ -1580,6 +1570,16 @@ window.__ModuleLoader__.load({
 					window.dispatchEvent(new CustomEvent("dsh-music:set-hidden", { detail: hidden }));
 				} catch { /* ignore */ }
 			};
+			// "停用" from the settings page: fully remove the player from the
+			// page and pause playback (plugin-level disable semantics).
+			var disablePlayer = function () {
+				setHidden(true);
+				fetch("/dsh-music/command", {
+					method: "POST",
+					headers: { "content-type": "application/json" },
+					body: JSON.stringify({ action: "pause" })
+				}).catch(function () {});
+			};
 			var label = { color: "var(--dsw-alias-label-primary)", fontSize: 13, lineHeight: "20px" };
 			var muted = { color: "var(--dsw-alias-label-tertiary)", fontSize: 13, lineHeight: "20px" };
 			var badge = { color: "var(--dsw-alias-label-secondary)", fontSize: 11, border: "1px solid var(--dsw-alias-border-l2)", borderRadius: 999, padding: "1px 8px", whiteSpace: "nowrap" };
@@ -1587,7 +1587,7 @@ window.__ModuleLoader__.load({
 			return h("div", { style: { display: "flex", flexDirection: "column", gap: 6, padding: "12px 16px 14px" } }, [
 				h("div", { style: { display: "flex", alignItems: "center", gap: 8 } }, [
 					h("span", { style: { fontSize: 14, fontWeight: 600, color: "var(--dsw-alias-label-primary)" } }, "🎵 音乐播放器（QQ 音乐）"),
-					h("span", { style: badge }, "v0.6.1"),
+					h("span", { style: badge }, "v0.7.1"),
 					h("span", { style: Object.assign({}, badge, { color: playing ? "var(--dsw-alias-state-success-primary)" : "var(--dsw-alias-label-tertiary)" }) }, playing ? "播放中" : "已暂停")
 				]),
 				h("div", { style: track ? label : muted }, track ? "正在播放：" + track.title + " — " + track.artist : "当前没有播放歌曲"),
@@ -1595,9 +1595,10 @@ window.__ModuleLoader__.load({
 					? "QQ 音乐账号：已登录" + (login.nickname ? "（" + login.nickname + "）" : "")
 					: "QQ 音乐账号：未登录（VIP 歌曲不可播）"),
 				h("div", { style: { display: "flex", gap: 8, marginTop: 2 } }, [
-					h("button", { type: "button", style: btn, onClick: function () { setHidden(false); } }, "显示播放器"),
-					h("button", { type: "button", style: btn, onClick: function () { setHidden(true); } }, "隐藏播放器")
-				])
+					h("button", { type: "button", style: btn, onClick: function () { setHidden(false); } }, "启用播放器"),
+					h("button", { type: "button", style: btn, onClick: disablePlayer }, "停用播放器")
+				]),
+				h("div", { style: Object.assign({}, muted, { fontSize: 12 }) }, "停用后播放器从页面消失并暂停播放；可随时在此启用，或对 agent 说「打开播放器」。")
 			]);
 		}
 
