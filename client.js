@@ -151,12 +151,6 @@ window.__ModuleLoader__.load({
 			".dshm-mini-hover{box-shadow:0 8px 24px rgba(0,0,0,0.45),0 0 0 6px rgba(49,194,124,0.3),inset 0 1px 0 rgba(255,255,255,0.22)}",
 			".dshm-mini-expand{position:absolute;top:-4px;right:-4px;width:20px;height:20px;border-radius:50%;border:2px solid rgba(255,255,255,0.3);background:linear-gradient(135deg,#3ddc84,#00a854);color:#fff;font-size:13px;font-weight:700;line-height:1;display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 2px 10px rgba(0,190,96,0.55);animation:dshm-mini-pop .18s ease-out;padding:0}",
 			".dshm-mini-close{position:absolute;bottom:-4px;left:-4px;width:20px;height:20px;border-radius:50%;border:2px solid rgba(255,255,255,0.3);background:linear-gradient(135deg,#ff6b6b,#e03333);color:#fff;font-size:12px;font-weight:700;line-height:1;display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 2px 10px rgba(255,80,80,0.5);animation:dshm-mini-pop .18s ease-out;padding:0}",
-			// ── reopen button (player hidden) ─────────────────────────────────
-			".dshm-reopen{position:fixed;right:16px;bottom:16px;width:40px;height:40px;border-radius:50%;background:linear-gradient(155deg,rgba(255,255,255,0.18),rgba(49,194,124,0.12)),rgba(10,16,14,0.65);backdrop-filter:blur(24px) saturate(180%);-webkit-backdrop-filter:blur(24px) saturate(180%);border:1px solid rgba(255,255,255,0.25);box-shadow:0 8px 24px rgba(0,0,0,0.45),0 0 0 4px rgba(49,194,124,0.16),inset 0 1px 0 rgba(255,255,255,0.2);display:flex;align-items:center;justify-content:center;color:#5ce6a8;cursor:pointer;transition:transform .15s ease,box-shadow .15s ease;animation:dshm-mini-pop .32s cubic-bezier(.22,1,.36,1)}",
-			".dshm-reopen:hover{transform:scale(1.08);box-shadow:0 8px 24px rgba(0,0,0,0.45),0 0 0 6px rgba(49,194,124,0.3),inset 0 1px 0 rgba(255,255,255,0.2)}",
-			".dshm-reopen-pulse{position:absolute;inset:0;border-radius:50%;border:2px solid rgba(49,194,124,0.55);animation:dshm-mini-pulse 2.2s ease-out infinite;pointer-events:none}",
-			".dshm-reopen-disc{width:30px;height:30px;border-radius:50%;overflow:hidden;border:2px solid rgba(255,255,255,0.3);box-shadow:0 2px 8px rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center}",
-			".dshm-reopen-disc img{width:100%;height:100%;object-fit:cover;display:block}",
 			".dshm-card{animation:dshm-mini-in .28s cubic-bezier(.22,1,.36,1)}",
 			"@keyframes dshm-mini-in{from{transform:scale(.7);opacity:0}to{transform:scale(1);opacity:1}}"
 		].join("");
@@ -1111,32 +1105,39 @@ window.__ModuleLoader__.load({
 			else if (loginStateKind === "failed" || loginStateKind === "expired") statusDotClass += " dshm-status-dot-err";
 			else if (loginStateKind === "done") statusDotClass += " dshm-status-dot-ok";
 
-			// Hidden (closed) state: a small cover button in the corner.
-			// Music keeps playing; click it to reopen and resume playback.
+			// Hidden (closed) state: a mini disc (same look as the collapsed
+			// player) with the current track's cover art filling the circle.
+			// Click to reopen and resume playback.
 			if (hidden) {
 				return h("div", {
-					className: "dshm-reopen",
+					className: "dshm-mini",
+					style: { position: "fixed", right: 16, bottom: 16 },
 					onClick: handleClick(function () {
 						reopenPlayer();
 						if (!playing) run({ action: "play" });
 					}),
 					title: playing ? "打开播放器（正在播放）" : "点击继续播放"
 				}, [
-					playing ? h("span", { className: "dshm-reopen-pulse" }) : null,
-					track && track.cover
-						? h("div", {
-							className: "dshm-reopen-disc" + (playing ? " dshm-cover-spinning" : ""),
-							style: { animationPlayState: playing ? "running" : "paused" }
-						}, h("img", { src: track.cover, alt: "", draggable: false }))
-						: h("svg", {
-							width: 17, height: 17, viewBox: "0 0 24 24",
+					playing ? h("span", { className: "dshm-mini-pulse" }) : null,
+					h("div", {
+						className: "dshm-mini-disc",
+						style: { animationPlayState: playing ? "running" : "paused" }
+					}, track && track.cover
+						? h("img", { src: track.cover, alt: "", draggable: false })
+						: h("div", {
+							style: Object.assign(coverStyle(remote ? remote.index : 0), {
+								width: "100%", height: "100%",
+								display: "flex", alignItems: "center", justifyContent: "center"
+							})
+						}, h("svg", {
+							width: 16, height: 16, viewBox: "0 0 24 24",
 							fill: "none", stroke: "currentColor", strokeWidth: 2,
-							strokeLinecap: "round", strokeLinejoin: "round"
+							strokeLinecap: "round", strokeLinejoin: "round", style: { opacity: 0.9 }
 						}, [
 							h("path", { d: "M9 18V5l12-2v13" }),
 							h("circle", { cx: 6, cy: 18, r: 3 }),
 							h("circle", { cx: 18, cy: 16, r: 3 })
-						])
+						])))
 				]);
 			}
 
