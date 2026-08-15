@@ -1177,6 +1177,9 @@ function parsePlaylistId(raw) {
  */
 export function apply(ctx) {
 	const state = defaultState();
+	// One-shot "show the player" flag set by the agent tool; the browser
+	// player polls it and acknowledges (clears) it after reopening.
+	let pendingShow = false;
 
 	// Restore the persisted playback snapshot (queue / volume / mode) so a
 	// restart continues where the last session left off.
@@ -1301,6 +1304,28 @@ export function apply(ctx) {
 		}
 	}));
 
+	// Player visibility bridge: the agent tool sets `show`, the browser polls
+	// it and acknowledges with {show:false} after reopening.
+	ctx.effect(() => ctx.webServer.register({
+		kind: "exact",
+		path: "/dsh-music/visibility",
+		handler: async (req, res) => {
+			if (req.method === "POST") {
+				try {
+					const body = await readBody(req);
+					const data = JSON.parse(body || "{}");
+					if (data.show === false) pendingShow = false;
+					json(res, { ok: true, show: pendingShow });
+					return;
+				} catch {
+					json(res, { error: "无效请求" }, 400);
+					return;
+				}
+			}
+			json(res, { show: pendingShow });
+		}
+	}));
+
 	// Start a QQ QR-code login session; returns the QR image.
 	ctx.effect(() => ctx.webServer.register({
 		kind: "exact",
@@ -1369,7 +1394,7 @@ export function apply(ctx) {
 			action: {
 				type: "string",
 				required: true,
-				description: "play(播放；query 先匹配本地曲库，未命中自动搜QQ音乐并播放) / pause / next / prev / list(查看队列) / search(QQ音乐搜歌) / playlist(导入QQ音乐歌单，id 可为歌单链接、id 或 201=我喜欢) / myplaylists(列出已登录账号的歌单) / login(引导用户扫码登录QQ音乐账号，解锁VIP播放与我的歌单) / logout(退出QQ音乐账号) / add(添加直链) / remove(按索引移除) / volume / mode / builtin(恢复/隐藏默认歌单) / reset"
+				description: "play(播放；query 先匹配本地曲库，未命中自动搜QQ音乐并播放) / pause / next / prev / list(查看队列) / search(QQ音乐搜歌) / playlist(导入QQ音乐歌单，id 可为歌单链接、id 或 201=我喜欢) / myplaylists(列出已登录账号的歌单) / login(引导用户扫码登录QQ音乐账号，解锁VIP播放与我的歌单) / show(重新显示被关闭的播放器) / logout(退出QQ音乐账号) / add(添加直链) / remove(按索引移除) / volume / mode / builtin(恢复/隐藏默认歌单) / reset"
 			},
 			query: { type: "string", description: "歌名或歌手关键词，配合 play/search 使用" },
 			url: { type: "string", description: "音频直链(http/https)，配合 add 使用" },
@@ -1453,6 +1478,10 @@ export function apply(ctx) {
 				case "login": {
 					if (credential) return `已登录 QQ 音乐账号（${credentialMusicId(credential)}${credential.nick ? `，昵称 ${credential.nick}` : ""}）。`;
 					return "请在播放器面板中点击「登录 QQ 音乐」按钮，用手机 QQ 扫码完成登录。登录后即可播放 VIP 歌曲、导入「我喜欢」和自己的歌单。";
+				}
+				case "show": {
+					pendingShow = true;
+					return "好的，正在打开音乐播放器。";
 				}
 				case "logout": {
 					if (!credential) return "当前未登录 QQ 音乐账号";

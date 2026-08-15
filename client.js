@@ -395,6 +395,8 @@ window.__ModuleLoader__.load({
 			var [hidden, setHidden] = react.useState(function () {
 				try { return localStorage.getItem(STORE_HIDDEN) === "1"; } catch { return false; }
 			});
+			var hiddenRef = react.useRef(hidden);
+			hiddenRef.current = hidden;
 			var miniLeaveTimerRef = react.useRef(null);
 			var miniClicksRef = react.useRef(0);
 			var miniClickTimerRef = react.useRef(null);
@@ -616,7 +618,9 @@ window.__ModuleLoader__.load({
 				if (Math.abs(audio.volume - state.volume) > 0.01) audio.volume = state.volume;
 			};
 
-			// Poll the host state and apply diffs to the audio element.
+			// Poll the host state and apply diffs to the audio element. Also
+			// checks the visibility bridge: the agent can ask to reopen the
+			// player after it was closed (fully hidden).
 			react.useEffect(function () {
 				var alive = true;
 				var poll = function () {
@@ -625,6 +629,20 @@ window.__ModuleLoader__.load({
 						setRemote(state);
 						applyStateToAudio(state);
 					}).catch(function () { /* host restarting */ });
+					fetch("/dsh-music/visibility", { cache: "no-store" }).then(function (res) {
+						return res.json();
+					}).then(function (visibility) {
+						if (!alive || !visibility || !visibility.show || !hiddenRef.current) return;
+						fetch("/dsh-music/visibility", {
+							method: "POST",
+							headers: { "content-type": "application/json" },
+							body: JSON.stringify({ show: false })
+						}).catch(function () {});
+						try { localStorage.setItem(STORE_HIDDEN, "0"); } catch { /* ignore */ }
+						setHidden(false);
+						snapMiniPosition();
+						setMini(true);
+					}).catch(function () {});
 				};
 				poll();
 				var timer = setInterval(poll, POLL_MS);
@@ -1034,7 +1052,13 @@ window.__ModuleLoader__.load({
 				var onSetHidden = function (event) {
 					var next = Boolean(event.detail);
 					try { localStorage.setItem(STORE_HIDDEN, next ? "1" : "0"); } catch { /* ignore */ }
-					setHidden(next);
+					if (next) {
+						setHidden(true);
+					} else {
+						setHidden(false);
+						snapMiniPosition();
+						setMini(true);
+					}
 				};
 				window.addEventListener("dsh-music:set-hidden", onSetHidden);
 				return function () { window.removeEventListener("dsh-music:set-hidden", onSetHidden); };
@@ -1105,41 +1129,10 @@ window.__ModuleLoader__.load({
 			else if (loginStateKind === "failed" || loginStateKind === "expired") statusDotClass += " dshm-status-dot-err";
 			else if (loginStateKind === "done") statusDotClass += " dshm-status-dot-ok";
 
-			// Hidden (closed) state: a mini disc (same look as the collapsed
-			// player) with the current track's cover art filling the circle.
-			// Click to reopen and resume playback.
-			if (hidden) {
-				return h("div", {
-					className: "dshm-mini",
-					style: { position: "fixed", right: 16, bottom: 16 },
-					onClick: handleClick(function () {
-						reopenPlayer();
-						if (!playing) run({ action: "play" });
-					}),
-					title: playing ? "打开播放器（正在播放）" : "点击继续播放"
-				}, [
-					playing ? h("span", { className: "dshm-mini-pulse" }) : null,
-					h("div", {
-						className: "dshm-mini-disc",
-						style: { animationPlayState: playing ? "running" : "paused" }
-					}, track && track.cover
-						? h("img", { src: track.cover, alt: "", draggable: false })
-						: h("div", {
-							style: Object.assign(coverStyle(remote ? remote.index : 0), {
-								width: "100%", height: "100%",
-								display: "flex", alignItems: "center", justifyContent: "center"
-							})
-						}, h("svg", {
-							width: 16, height: 16, viewBox: "0 0 24 24",
-							fill: "none", stroke: "currentColor", strokeWidth: 2,
-							strokeLinecap: "round", strokeLinejoin: "round", style: { opacity: 0.9 }
-						}, [
-							h("path", { d: "M9 18V5l12-2v13" }),
-							h("circle", { cx: 6, cy: 18, r: 3 }),
-							h("circle", { cx: 18, cy: 16, r: 3 })
-						])))
-				]);
-			}
+			// Hidden (closed) state: the player fully disappears from the page
+			// (no corner button). Reopen via the settings card button or by
+			// telling the agent to show the player (visibility bridge).
+			if (hidden) return null;
 
 			// Mini disc view: spinning album art while playing. Draggable; it
 			// snaps to screen edges on drop. Hovering shows an expand button —
