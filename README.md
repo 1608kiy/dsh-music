@@ -1,4 +1,6 @@
-# dsh-MusicPlayer 🎵
+# dsh-music 🎵
+
+> 🌐 Languages: [English](README.en.md) | [简体中文](README.md)
 
 **这是一个可以让你边对话边听歌的 DeepSeek Harness 插件**，具有折叠和展开两种可自由拖动的悬浮窗口形态，接入 **QQ 音乐**（官方 musicu.fcg / vkey 解析 + Meting 兜底），支持 **扫码登录 QQ 音乐账号**（解锁 VIP 歌曲播放、导入「我喜欢」和自己的歌单），以及 QQ 音乐歌单导入和按歌名或歌手搜索单曲导入。
 
