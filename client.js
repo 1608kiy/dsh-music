@@ -21,7 +21,6 @@ window.__ModuleLoader__.load({
 		var STORE_Y = "dsh-music:y";
 		var STORE_QUALITY = "dsh-music:quality";
 		var STORE_HIDDEN = "dsh-music:hidden";
-		var STORE_ONBOARDED = "dsh-music:onboarded";
 		var PROGRESS_KEY = "dsh-music:progress";
 
 		/**
@@ -152,7 +151,21 @@ window.__ModuleLoader__.load({
 			".dshm-mini-expand{position:absolute;top:-4px;right:-4px;width:20px;height:20px;border-radius:50%;border:2px solid rgba(255,255,255,0.3);background:linear-gradient(135deg,#3ddc84,#00a854);color:#fff;font-size:13px;font-weight:700;line-height:1;display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 2px 10px rgba(0,190,96,0.55);animation:dshm-mini-pop .18s ease-out;padding:0}",
 			".dshm-mini-close{position:absolute;bottom:-4px;left:-4px;width:20px;height:20px;border-radius:50%;border:2px solid rgba(255,255,255,0.3);background:linear-gradient(135deg,#ff6b6b,#e03333);color:#fff;font-size:12px;font-weight:700;line-height:1;display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 2px 10px rgba(255,80,80,0.5);animation:dshm-mini-pop .18s ease-out;padding:0}",
 			".dshm-card{animation:dshm-mini-in .28s cubic-bezier(.22,1,.36,1)}",
-			"@keyframes dshm-mini-in{from{transform:scale(.7);opacity:0}to{transform:scale(1);opacity:1}}"
+			"@keyframes dshm-mini-in{from{transform:scale(.7);opacity:0}to{transform:scale(1);opacity:1}}",
+			// ── 设置页插件卡片（原生 PluginCard 同款：可折叠，头部名字+描述+箭头）──
+			".dshm-pc-card{border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-3);border-radius:12px;list-style:none;transition:border-color .16s,background .16s}",
+			".dshm-pc-card:hover{border-color:var(--dsw-alias-label-dimmed)}",
+			".dshm-pc-card.dshm-pc-open{background:var(--dsw-alias-bg-layer-2);border-color:var(--dsw-alias-label-dimmed)}",
+			".dshm-pc-head{appearance:none;width:100%;font:inherit;color:inherit;text-align:left;cursor:pointer;background:0 0;border:0;border-radius:12px;align-items:center;gap:12px;padding:14px 16px;display:flex}",
+			".dshm-pc-head:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:-2px}",
+			".dshm-pc-headtext{flex-direction:column;flex:1;gap:4px;min-width:0;display:flex}",
+			".dshm-pc-name{color:var(--dsw-alias-label-primary);font-size:15px;font-weight:600;line-height:1.4}",
+			".dshm-pc-desc{color:var(--dsw-alias-label-tertiary);font-size:13px;line-height:1.5}",
+			".dshm-pc-pill{white-space:nowrap;background:var(--dsw-alias-bg-module-platform);color:var(--dsw-alias-label-secondary);border-radius:999px;flex:none;padding:1px 8px;font-size:11px;font-weight:500;line-height:17px}",
+			".dshm-pc-pill-live{color:var(--dsw-alias-state-success-primary)}",
+			".dshm-pc-chevron{color:var(--dsw-alias-label-tertiary);flex:none;display:inline-flex;transition:transform .16s}",
+			".dshm-pc-chevron-open{transform:rotate(180deg)}",
+			".dshm-pc-body{border-top:1px solid var(--dsw-alias-border-l2);margin:0 16px;padding:2px 0 10px}"
 		].join("");
 
 		/** Inject the player stylesheet once. */
@@ -429,17 +442,13 @@ window.__ModuleLoader__.load({
 			};
 			react.useEffect(restorePos, []);
 
-			// First run shows the full card as onboarding; afterwards the
-			// player starts (and reopens) as a snapped mini disc.
+			// Always start as the snapped mini disc — the full card only appears
+			// when the user expands it. (The previous localStorage onboarding flag
+			// never survived restarts: the webview origin changes with every host
+			// restart because the loopback port changes, wiping localStorage.)
 			react.useEffect(function () {
-				try {
-					if (localStorage.getItem(STORE_ONBOARDED) === "1") {
-						snapMiniPosition();
-						setMini(true);
-					} else {
-						localStorage.setItem(STORE_ONBOARDED, "1");
-					}
-				} catch { /* ignore */ }
+				snapMiniPosition();
+				setMini(true);
 				// eslint-disable-next-line react-hooks/exhaustive-deps
 			}, []);
 
@@ -1544,9 +1553,17 @@ window.__ModuleLoader__.load({
 		 * live playback/login status, and show/hide controls. Communicates with
 		 * the floating player through the "dsh-music:set-hidden" window event.
 		 */
+		/** 设置页插件卡片：原生 PluginCard 同款可折叠卡片（头部名字/状态/箭头，点击展开）。 */
 		function MusicSettingsCard() {
-			var [now, setNow] = react.useState(null);
-			var [login, setLogin] = react.useState(null);
+			var nowState = react.useState(null);
+			var now = nowState[0];
+			var setNow = nowState[1];
+			var loginState = react.useState(null);
+			var login = loginState[0];
+			var setLogin = loginState[1];
+			var openState = react.useState(false);
+			var open = openState[0];
+			var setOpen = openState[1];
 			react.useEffect(function () {
 				var alive = true;
 				var refresh = function () {
@@ -1580,26 +1597,40 @@ window.__ModuleLoader__.load({
 					body: JSON.stringify({ action: "pause" })
 				}).catch(function () {});
 			};
-			var label = { color: "var(--dsw-alias-label-primary)", fontSize: 13, lineHeight: "20px" };
-			var muted = { color: "var(--dsw-alias-label-tertiary)", fontSize: 13, lineHeight: "20px" };
-			var badge = { color: "var(--dsw-alias-label-secondary)", fontSize: 11, border: "1px solid var(--dsw-alias-border-l2)", borderRadius: 999, padding: "1px 8px", whiteSpace: "nowrap" };
+			var line = { color: "var(--dsw-alias-label-secondary)", fontSize: 13, lineHeight: "20px", margin: "10px 0 0" };
+			var muted = { color: "var(--dsw-alias-label-tertiary)", fontSize: 13, lineHeight: "20px", margin: "10px 0 0" };
 			var btn = { border: "1px solid var(--dsw-alias-border-l2)", background: "var(--dsw-alias-bg-layer-1)", color: "var(--dsw-alias-label-primary)", borderRadius: 8, padding: "5px 14px", fontSize: 13, cursor: "pointer" };
-			return h("div", { style: { display: "flex", flexDirection: "column", gap: 6, padding: "12px 16px 14px" } }, [
-				h("div", { style: { display: "flex", alignItems: "center", gap: 8 } }, [
-					h("span", { style: { fontSize: 14, fontWeight: 600, color: "var(--dsw-alias-label-primary)" } }, "🎵 音乐播放器（QQ 音乐）"),
-					h("span", { style: badge }, "v0.7.1"),
-					h("span", { style: Object.assign({}, badge, { color: playing ? "var(--dsw-alias-state-success-primary)" : "var(--dsw-alias-label-tertiary)" }) }, playing ? "播放中" : "已暂停")
-				]),
-				h("div", { style: track ? label : muted }, track ? "正在播放：" + track.title + " — " + track.artist : "当前没有播放歌曲"),
-				h("div", { style: muted }, login && login.loggedIn
-					? "QQ 音乐账号：已登录" + (login.nickname ? "（" + login.nickname + "）" : "")
-					: "QQ 音乐账号：未登录（VIP 歌曲不可播）"),
-				h("div", { style: { display: "flex", gap: 8, marginTop: 2 } }, [
-					h("button", { type: "button", style: btn, onClick: function () { setHidden(false); } }, "启用播放器"),
-					h("button", { type: "button", style: btn, onClick: disablePlayer }, "停用播放器")
-				]),
-				h("div", { style: Object.assign({}, muted, { fontSize: 12 }) }, "停用后播放器从页面消失并暂停播放；可随时在此启用，或对 agent 说「打开播放器」。")
-			]);
+			return h("li", { className: "dshm-pc-card" + (open ? " dshm-pc-open" : "") },
+				h("button", {
+					type: "button",
+					className: "dshm-pc-head",
+					"aria-expanded": open,
+					"aria-label": (open ? "收起" : "展开") + "：音乐播放器",
+					onClick: function () { setOpen(!open); }
+				},
+					h("span", { className: "dshm-pc-headtext" },
+						h("span", { className: "dshm-pc-name" }, "音乐播放器（QQ 音乐）"),
+						h("span", { className: "dshm-pc-desc" }, "悬浮歌词播放器 · 对话里点歌即播，未登录可听免费曲目"),
+					),
+					h("span", { className: "dshm-pc-pill" + (playing ? " dshm-pc-pill-live" : "") }, playing ? "播放中" : "已暂停"),
+					h("span", { className: "dshm-pc-chevron" + (open ? " dshm-pc-chevron-open" : "") },
+						h("svg", { width: 14, height: 14, viewBox: "0 0 16 16", fill: "none", "aria-hidden": true },
+							h("path", { d: "M4 6l4 4 4-4", stroke: "currentColor", "stroke-width": 1.5, "stroke-linecap": "round", "stroke-linejoin": "round" })))),
+				open ? h("div", { className: "dshm-pc-body" },
+					now === null
+						? h("p", { style: muted }, "读取中…")
+						: [
+							h("p", { key: "track", style: track ? line : muted }, track ? "正在播放：" + track.title + " — " + track.artist : "当前没有播放歌曲"),
+							h("p", { key: "login", style: muted }, login && login.loggedIn
+								? "QQ 音乐账号：已登录" + (login.nickname ? "（" + login.nickname + "）" : "")
+								: "QQ 音乐账号：未登录（VIP 歌曲不可播）"),
+							h("div", { key: "btns", style: { display: "flex", gap: 8, margin: "10px 0 0" } },
+								h("button", { type: "button", style: btn, onClick: function () { setHidden(false); } }, "启用播放器"),
+								h("button", { type: "button", style: btn, onClick: disablePlayer }, "停用播放器")),
+							h("p", { key: "hint", style: Object.assign({}, muted, { fontSize: 12 }) }, "停用后播放器从页面消失并暂停播放；可随时在此启用，或对 agent 说「打开播放器」。"),
+						]
+				) : null,
+			);
 		}
 
 		/**
@@ -1626,7 +1657,7 @@ window.__ModuleLoader__.load({
 					return slots.inject("settings.plugin.item", function* () {
 						yield slots.register({
 							name: "settings.plugin.item",
-							id: "dsh-music",
+							key: "dsh-music",
 							order: 30,
 							label: function () { return "音乐播放器"; },
 							inject: function () { return {}; }
