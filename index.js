@@ -1442,6 +1442,8 @@ export function apply(ctx) {
 							state.custom.push(trackRow);
 							state.queue = composeQueue(state.custom, state.useBuiltin);
 							state.index = state.queue.length - 1;
+							state.playing = true;
+							state.version += 1;
 							return `本地曲库无匹配，已从QQ音乐搜索并加入：▶ 「${song.name} — ${song.artist}」（自动播放）`;
 						}
 					} else if (Number.isInteger(args.index)) {
